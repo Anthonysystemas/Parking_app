@@ -7,6 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'mapa_estacionamiento_model.dart';
+import 'components/map_background.dart';
+import 'components/parking_marker.dart';
+import 'components/search_bar_widget.dart';
+import 'components/parking_info_card.dart';
 export 'mapa_estacionamiento_model.dart';
 
 /// Diseña una app móvil de mapa para encontrar estacionamientos:
@@ -66,26 +70,8 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
             height: double.infinity,
             child: Stack(
               children: [
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Color(0xFFF5F5F5),
-                  ),
-                  child: Image.network(
-                    'https://images.unsplash.com/photo-1687673962358-372135a44ed2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w0NTYyMDF8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NTY3NTcxNzR8&ixlib=rb-4.1.0&q=80&w=1080',
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Color(0x4D000000),
-                  ),
-                ),
+                // Fondo del mapa
+                const MapBackground(),
                 Container(
                   width: double.infinity,
                   height: double.infinity,
