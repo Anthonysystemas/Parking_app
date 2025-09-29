@@ -10,15 +10,6 @@ import 'services/parking_api_service.dart';
 import 'package:geolocator/geolocator.dart';
 export 'mapa_estacionamiento_model.dart';
 
-
-/// Diseña una app móvil de mapa para encontrar estacionamientos:
-///
-/// Mapa grande en toda la pantalla
-/// Marcadores "P" verdes y rojos con precios
-/// Buscador arriba
-/// Card abajo con info del parking y botón "RESERVAR"
-/// Colores: verde turquesa y blanco
-/// Estilo moderno y minimalista
 class MapaEstacionamientoWidget extends StatefulWidget {
   const MapaEstacionamientoWidget({super.key});
 
@@ -52,10 +43,8 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
 
   void _loadNearbyParkings() async {
     try {
-      // Obtener ubicación actual
       currentPosition = await ParkingApiService.getCurrentLocation();
       
-      // Obtener parkings cercanos
       final nearbyParkings = await ParkingApiService.getNearbyParkings(
         userLat: currentPosition?.latitude,
         userLng: currentPosition?.longitude,
@@ -68,7 +57,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
           isLoading = false;
         });
         
-        // Mostrar mensaje informativo
         if (currentPosition != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -105,7 +93,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
 
   void _searchParkings(String query) async {
     if (query.isEmpty) {
-      // Si no hay búsqueda, recargar parkings cercanos
       _loadNearbyParkings();
       return;
     }
@@ -115,7 +102,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
     });
 
     try {
-      // Filtrar parkings existentes por nombre, dirección o zona
       final filteredParkings = parkingData.where((parking) {
         final name = parking['name']?.toString().toLowerCase() ?? '';
         final location = parking['location']?.toString().toLowerCase() ?? '';
@@ -127,7 +113,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                address.contains(searchTerm);
       }).toList();
 
-      // Si hay resultados del filtro, usarlos
       if (filteredParkings.isNotEmpty) {
         setState(() {
           parkingData = filteredParkings;
@@ -137,7 +122,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
         return;
       }
 
-      // Si no hay resultados locales, buscar por zona específica
       final zoneCoordinates = _getCoordinatesForZone(query.toLowerCase());
       if (zoneCoordinates != null) {
         final nearbyParkings = await ParkingApiService.getNearbyParkings(
@@ -185,7 +169,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
   }
 
   Map<String, double>? _getCoordinatesForZone(String zone) {
-    // Coordenadas de diferentes zonas de Lima
     final Map<String, Map<String, double>> zones = {
       'carabayllo': {'lat': -11.8577, 'lng': -77.0428},
       'santo domingo': {'lat': -11.8577, 'lng': -77.0428},
@@ -208,7 +191,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
       'santa anita': {'lat': -12.0517, 'lng': -76.9738},
     };
     
-    // Buscar zona exacta o parcial
     for (String zoneKey in zones.keys) {
       if (zoneKey.contains(zone) || zone.contains(zoneKey)) {
         return zones[zoneKey];
@@ -245,7 +227,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
           ),
         );
         
-        // Recargar parkings cercanos a la nueva ubicación
         _loadNearbyParkings();
       } else {
         setState(() {
@@ -296,7 +277,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
   @override
   void dispose() {
     _model.dispose();
-
     super.dispose();
   }
 
@@ -317,7 +297,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
             height: double.infinity,
             child: Stack(
               children: [
-                // Fondo del mapa con marcadores integrados
                 if (isLoading)
                   Container(
                     color: Colors.white,
@@ -368,7 +347,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                     currentPosition: currentPosition,
                   ),
                 
-                // Panel de información del parking seleccionado
                 if (!isLoading && selectedParkingIndex >= 0 && selectedParkingIndex < parkingData.length)
                   Positioned(
                     bottom: 20,
@@ -395,7 +373,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Precio principal y botón cerrar
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -441,7 +418,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                             
                             SizedBox(height: 16),
                             
-                            // Nombre del parking
                             Text(
                               parkingData[selectedParkingIndex]['name'] ?? 'Estacionamiento',
                               style: TextStyle(
@@ -453,7 +429,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                             
                             SizedBox(height: 8),
                             
-                            // Información de ubicación
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -480,10 +455,8 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                             
                             SizedBox(height: 12),
                             
-                            // Información de horario y distancia
                             Row(
                               children: [
-                                // Horario
                                 Container(
                                   padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
@@ -513,7 +486,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                                 
                                 SizedBox(width: 12),
                                 
-                                // Distancia
                                 if (parkingData[selectedParkingIndex]['distanceText'] != null)
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -539,7 +511,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                             
                             SizedBox(height: 16),
                             
-                            // Espacios disponibles
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -581,7 +552,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                                     ),
                                   ],
                                 ),
-                                // Rating
                                 if (parkingData[selectedParkingIndex]['rating'] != null)
                                   Row(
                                     children: [
@@ -600,7 +570,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                               ],
                             ),
                             
-                            // Características
                             if (parkingData[selectedParkingIndex]['features'] != null && 
                                 parkingData[selectedParkingIndex]['features'].isNotEmpty) ...[
                               SizedBox(height: 12),
@@ -608,7 +577,7 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                                 spacing: 8,
                                 runSpacing: 6,
                                 children: parkingData[selectedParkingIndex]['features']
-                                    .take(4) // Mostrar máximo 4 características
+                                    .take(4)
                                     .map<Widget>((feature) => Container(
                                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
@@ -628,7 +597,6 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                               ),
                             ],
                             
-                            // Descripción adicional si existe
                             if (parkingData[selectedParkingIndex]['description'] != null) ...[
                               SizedBox(height: 8),
                               Text(
@@ -645,20 +613,17 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                             
                             SizedBox(height: 16),
                             
-                            // Botón RESERVAR
-                            // Botón RESERVAR
-SizedBox(
-  width: double.infinity,
-  child: ElevatedButton(
-    onPressed: parkingData[selectedParkingIndex]['isAvailable'] ?? true
-        ? () {
-            // Navegar a la página de reserva
-            context.pushNamed(
-              ReservarParkingWidget.routeName,
-              extra: parkingData[selectedParkingIndex], // Pasar datos del parking
-            );
-          }
-        : null,
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: parkingData[selectedParkingIndex]['isAvailable'] ?? true
+                                    ? () {
+                                        context.pushNamed(
+                                          ReservarParkingWidget.routeName,
+                                          extra: parkingData[selectedParkingIndex],
+                                        );
+                                      }
+                                    : null,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Color(0xFF00BFA6),
                                   foregroundColor: Colors.white,
@@ -685,13 +650,11 @@ SizedBox(
                     ),
                   ),
                 
-                // Barra de búsqueda
                 Align(
                   alignment: AlignmentDirectional(0.0, -1.0),
                   child: Container(
                     child: Padding(
-                      padding:
-                          EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
+                      padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
                       child: TextFormField(
                         controller: _model.textController,
                         focusNode: _model.textFieldFocusNode,
@@ -702,7 +665,6 @@ SizedBox(
                           _searchParkings(value);
                         },
                         onChanged: (value) {
-                          // Búsqueda en tiempo real con debounce
                           if (value.length > 2) {
                             Future.delayed(Duration(milliseconds: 500), () {
                               if (_model.textController?.text == value) {
@@ -715,26 +677,10 @@ SizedBox(
                         },
                         decoration: InputDecoration(
                           hintText: 'Buscar por distrito, zona o nombre...',
-                          hintStyle:
-                              FlutterFlowTheme.of(context).bodyMedium.override(
-                                    font: GoogleFonts.inter(
-                                      fontWeight: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .fontWeight,
-                                      fontStyle: FlutterFlowTheme.of(context)
-                                          .bodyMedium
-                                          .fontStyle,
-                                    ),
-                                    color: Color(0xFF999999),
-                                    fontSize: 16.0,
-                                    letterSpacing: 0.0,
-                                    fontWeight: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .fontWeight,
-                                    fontStyle: FlutterFlowTheme.of(context)
-                                        .bodyMedium
-                                        .fontStyle,
-                                  ),
+                          hintStyle: TextStyle(
+                            color: Color(0xFF999999),
+                            fontSize: 16.0,
+                          ),
                           enabledBorder: OutlineInputBorder(
                             borderSide: BorderSide(
                               color: Colors.transparent,
@@ -765,8 +711,7 @@ SizedBox(
                           ),
                           filled: true,
                           fillColor: Colors.white,
-                          contentPadding: EdgeInsetsDirectional.fromSTEB(
-                              20.0, 12.0, 20.0, 12.0),
+                          contentPadding: EdgeInsetsDirectional.fromSTEB(20.0, 12.0, 20.0, 12.0),
                           prefixIcon: Icon(
                             Icons.search_rounded,
                             color: Color(0xFF666666),
@@ -784,27 +729,13 @@ SizedBox(
                             ),
                           ),
                         ),
-                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                              font: GoogleFonts.inter(
-                                fontWeight: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .fontWeight,
-                                fontStyle: FlutterFlowTheme.of(context)
-                                    .bodyMedium
-                                    .fontStyle,
-                              ),
-                              fontSize: 16.0,
-                              letterSpacing: 0.0,
-                              fontWeight: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .fontWeight,
-                              fontStyle: FlutterFlowTheme.of(context)
-                                  .bodyMedium
-                                  .fontStyle,
-                            ),
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 16.0,
+                          fontWeight: FontWeight.w500,
+                        ),
                         cursorColor: Color(0xFF00D4AA),
-                        validator:
-                            _model.textControllerValidator.asValidator(context),
+                        validator: _model.textControllerValidator.asValidator(context),
                       ),
                     ),
                   ),

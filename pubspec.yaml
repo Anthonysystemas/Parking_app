@@ -91,12 +91,14 @@ dependencies:
   # Dependencias para mapas y geolocalización
   flutter_map: ^6.1.0
   latlong2: ^0.9.1
-  geolocator: ^10.1.0
-  permission_handler: ^11.0.1
+  geolocator: ^14.0.2
+  permission_handler: ^12.0.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.0
+  mapbox_maps_flutter: ^2.11.0
+  dio: ^5.9.0
 
 dependency_overrides:
   http: ^1.1.0

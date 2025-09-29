@@ -26,6 +26,9 @@ class RealMapWidget extends StatelessWidget {
         initialZoom: 15.0,
         minZoom: 10.0,
         maxZoom: 18.0,
+        interactionOptions: InteractionOptions(
+          flags: InteractiveFlag.all,
+        ),
       ),
       children: [
         // Capa de tiles de OpenStreetMap
