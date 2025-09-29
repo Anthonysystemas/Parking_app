@@ -12,21 +12,22 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 class ReservarParkingModel extends FlutterFlowModel<ReservarParkingWidget> {
-  ///  State fields for stateful widgets in this page.
+  /// State fields for stateful widgets in this page.
 
   // State field(s) for DropDown widget.
   String? dropDownValue;
   FormFieldController<String>? dropDownValueController;
-  // State field(s) for Checkbox widget.
+  
+  // State field(s) for Checkbox widgets.
   bool? checkboxValue1;
-  // State field(s) for Checkbox widget.
   bool? checkboxValue2;
-  // State field(s) for Checkbox widget.
   bool? checkboxValue3;
 
   @override
   void initState(BuildContext context) {}
 
   @override
-  void dispose() {}
+  void dispose() {
+    dropDownValueController?.dispose();
+  }
 }
