@@ -6,7 +6,7 @@ import 'dart:ui';
 import '/index.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import 'calendario_model.dart';
 export 'calendario_model.dart';
 
@@ -24,20 +24,19 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
   late CalendarioModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // Variables para manejar el estado del calendario
   DateTime selectedDate = DateTime.now();
   TimeOfDay selectedTime = TimeOfDay.now();
   DateTime currentMonth = DateTime.now();
 
-  // Lista de nombres de meses
   final List<String> monthNames = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
-  // Lista de nombres de días
   final List<String> weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-  final List<String> weekDayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  final List<String> weekDayNames = [
+    'Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'
+  ];
 
   @override
   void initState() {
@@ -51,23 +50,17 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
     super.dispose();
   }
 
-  // Función para obtener los días del mes
   List<DateTime?> getDaysInMonth(DateTime month) {
     List<DateTime?> days = [];
     
-    // Primer día del mes
     DateTime firstDay = DateTime(month.year, month.month, 1);
-    
-    // Último día del mes
     DateTime lastDay = DateTime(month.year, month.month + 1, 0);
     
-    // Agregar días vacíos al inicio para alinear con el día de la semana
-    int startWeekday = firstDay.weekday % 7; // Domingo = 0
+    int startWeekday = firstDay.weekday % 7;
     for (int i = 0; i < startWeekday; i++) {
       days.add(null);
     }
     
-    // Agregar todos los días del mes
     for (int day = 1; day <= lastDay.day; day++) {
       days.add(DateTime(month.year, month.month, day));
     }
@@ -75,21 +68,18 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
     return days;
   }
 
-  // Función para cambiar mes
   void changeMonth(int delta) {
     setState(() {
       currentMonth = DateTime(currentMonth.year, currentMonth.month + delta, 1);
     });
   }
 
-  // Función para seleccionar fecha
   void selectDate(DateTime date) {
     setState(() {
       selectedDate = date;
     });
   }
 
-  // Función para seleccionar hora
   void selectTime() async {
     final TimeOfDay? time = await showTimePicker(
       context: context,
@@ -98,9 +88,9 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: FlutterFlowTheme.of(context).primary,
-              onPrimary: FlutterFlowTheme.of(context).primaryBackground,
-              surface: FlutterFlowTheme.of(context).secondaryBackground,
+              primary: Color(0xFF00BFA5),
+              onPrimary: Colors.white,
+              surface: Colors.white,
             ),
           ),
           child: child!,
@@ -115,9 +105,8 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
     }
   }
 
-  // Función para confirmar selección
+  // CORREGIDO: Devuelve los datos en lugar de solo mostrar SnackBar
   void confirmSelection() {
-    // Combinar fecha y hora seleccionadas
     final DateTime finalDateTime = DateTime(
       selectedDate.year,
       selectedDate.month,
@@ -126,16 +115,12 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
       selectedTime.minute,
     );
 
-    // Aquí puedes agregar la lógica para procesar la fecha/hora seleccionada
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Fecha y hora seleccionada: ${DateFormat('dd/MM/yyyy HH:mm').format(finalDateTime)}'),
-        backgroundColor: FlutterFlowTheme.of(context).primary,
-      ),
-    );
-
-    // Navegar de vuelta o proceder con la lógica de tu app
-    // context.pushNamed(NextPageWidget.routeName);
+    // Devolver los datos a la pantalla anterior
+    Navigator.pop(context, {
+      'date': selectedDate,
+      'time': selectedTime,
+      'dateTime': finalDateTime,
+    });
   }
 
   @override
@@ -147,7 +132,7 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
       },
       child: Scaffold(
         key: scaffoldKey,
-        backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+        backgroundColor: Color(0xFFF5F5F5),
         body: SafeArea(
           top: true,
           child: Column(
@@ -169,29 +154,28 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             FlutterFlowIconButton(
-                              borderColor: FlutterFlowTheme.of(context).alternate,
+                              borderColor: Color(0xFFE0E0E0),
                               borderRadius: 20.0,
                               borderWidth: 1.0,
                               buttonSize: 40.0,
+                              fillColor: Colors.white,
                               icon: Icon(
-                                Icons.chevron_left,
-                                color: FlutterFlowTheme.of(context).primaryText,
+                                Icons.arrow_back,
+                                color: Color(0xFF2E2E2E),
                                 size: 20.0,
                               ),
-                              onPressed: () async {
-                                context.pushNamed(PaginaInicioWidget.routeName);
+                              onPressed: () {
+                                Navigator.pop(context);
                               },
                             ),
                             Expanded(
                               child: Text(
                                 'Seleccionar fecha y hora',
                                 textAlign: TextAlign.center,
-                                style: FlutterFlowTheme.of(context).titleLarge.override(
-                                  font: GoogleFonts.interTight(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                style: TextStyle(
                                   fontSize: MediaQuery.of(context).size.width > 600 ? 24.0 : 20.0,
-                                  letterSpacing: 0.0,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF2E2E2E),
                                 ),
                               ),
                             ),
@@ -207,11 +191,10 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                           children: [
                             Text(
                               'Fecha seleccionada',
-                              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                font: GoogleFonts.inter(fontWeight: FontWeight.w500),
-                                color: FlutterFlowTheme.of(context).secondaryText,
-                                fontSize: 16.0,
-                                letterSpacing: 0.0,
+                              style: TextStyle(
+                                fontSize: 14.0,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF9E9E9E),
                               ),
                             ),
                             SizedBox(height: 12.0),
@@ -219,12 +202,19 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                               width: double.infinity,
                               padding: EdgeInsets.all(16.0),
                               decoration: BoxDecoration(
-                                color: FlutterFlowTheme.of(context).secondaryBackground,
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(12.0),
                                 border: Border.all(
-                                  color: FlutterFlowTheme.of(context).alternate,
-                                  width: 1.0,
+                                  color: Color(0xFF00BFA5),
+                                  width: 2.0,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Color(0xFF00BFA5).withOpacity(0.1),
+                                    blurRadius: 8,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -234,25 +224,26 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                     children: [
                                       Text(
                                         weekDayNames[selectedDate.weekday % 7],
-                                        style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                          color: FlutterFlowTheme.of(context).secondaryText,
+                                        style: TextStyle(
                                           fontSize: 14.0,
-                                          letterSpacing: 0.0,
+                                          color: Color(0xFF9E9E9E),
                                         ),
                                       ),
+                                      SizedBox(height: 4),
                                       Text(
                                         '${selectedDate.day} de ${monthNames[selectedDate.month - 1]}, ${selectedDate.year}',
-                                        style: FlutterFlowTheme.of(context).titleMedium.override(
-                                          font: GoogleFonts.interTight(fontWeight: FontWeight.w600),
-                                          letterSpacing: 0.0,
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF2E2E2E),
                                         ),
                                       ),
                                     ],
                                   ),
                                   Icon(
                                     Icons.calendar_today,
-                                    color: FlutterFlowTheme.of(context).secondaryText,
-                                    size: 20.0,
+                                    color: Color(0xFF00BFA5),
+                                    size: 24.0,
                                   ),
                                 ],
                               ),
@@ -267,12 +258,11 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Hora seleccionada',
-                              style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                font: GoogleFonts.inter(fontWeight: FontWeight.w500),
-                                color: FlutterFlowTheme.of(context).secondaryText,
-                                fontSize: 16.0,
-                                letterSpacing: 0.0,
+                              'Hora de entrada',
+                              style: TextStyle(
+                                fontSize: 14.0,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF9E9E9E),
                               ),
                             ),
                             SizedBox(height: 12.0),
@@ -282,28 +272,35 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                 width: double.infinity,
                                 padding: EdgeInsets.all(16.0),
                                 decoration: BoxDecoration(
-                                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                                  color: Colors.white,
                                   borderRadius: BorderRadius.circular(12.0),
                                   border: Border.all(
-                                    color: FlutterFlowTheme.of(context).alternate,
-                                    width: 1.0,
+                                    color: Color(0xFF00BFA5),
+                                    width: 2.0,
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Color(0xFF00BFA5).withOpacity(0.1),
+                                      blurRadius: 8,
+                                      offset: Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       selectedTime.format(context),
-                                      style: FlutterFlowTheme.of(context).titleLarge.override(
-                                        font: GoogleFonts.interTight(fontWeight: FontWeight.w600),
-                                        fontSize: 24.0,
-                                        letterSpacing: 0.0,
+                                      style: TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF2E2E2E),
                                       ),
                                     ),
                                     Icon(
                                       Icons.access_time,
-                                      color: FlutterFlowTheme.of(context).secondaryText,
-                                      size: 24.0,
+                                      color: Color(0xFF00BFA5),
+                                      size: 28.0,
                                     ),
                                   ],
                                 ),
@@ -318,8 +315,15 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                         Container(
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: FlutterFlowTheme.of(context).secondaryBackground,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(16.0),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: Padding(
                             padding: EdgeInsets.all(20.0),
@@ -331,35 +335,37 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                   children: [
                                     Text(
                                       '${monthNames[currentMonth.month - 1]} ${currentMonth.year}',
-                                      style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                        font: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                                      style: TextStyle(
                                         fontSize: 18.0,
-                                        letterSpacing: 0.0,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF2E2E2E),
                                       ),
                                     ),
                                     Row(
                                       children: [
                                         FlutterFlowIconButton(
-                                          borderColor: FlutterFlowTheme.of(context).alternate,
+                                          borderColor: Color(0xFFE0E0E0),
                                           borderRadius: 16.0,
                                           borderWidth: 1.0,
                                           buttonSize: 32.0,
+                                          fillColor: Colors.white,
                                           icon: Icon(
                                             Icons.chevron_left,
-                                            color: FlutterFlowTheme.of(context).primaryText,
+                                            color: Color(0xFF2E2E2E),
                                             size: 16.0,
                                           ),
                                           onPressed: () => changeMonth(-1),
                                         ),
                                         SizedBox(width: 8.0),
                                         FlutterFlowIconButton(
-                                          borderColor: FlutterFlowTheme.of(context).alternate,
+                                          borderColor: Color(0xFFE0E0E0),
                                           borderRadius: 16.0,
                                           borderWidth: 1.0,
                                           buttonSize: 32.0,
+                                          fillColor: Colors.white,
                                           icon: Icon(
                                             Icons.chevron_right,
-                                            color: FlutterFlowTheme.of(context).primaryText,
+                                            color: Color(0xFF2E2E2E),
                                             size: 16.0,
                                           ),
                                           onPressed: () => changeMonth(1),
@@ -383,10 +389,9 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                   primary: false,
                                   shrinkWrap: true,
                                   scrollDirection: Axis.vertical,
-                                  itemCount: 49, // 7 header + 42 days max
+                                  itemCount: 49,
                                   itemBuilder: (context, index) {
                                     if (index < 7) {
-                                      // Headers de días de la semana
                                       return Container(
                                         decoration: BoxDecoration(
                                           borderRadius: BorderRadius.circular(8.0),
@@ -395,17 +400,16 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                           child: Text(
                                             weekDays[index],
                                             textAlign: TextAlign.center,
-                                            style: FlutterFlowTheme.of(context).bodySmall.override(
-                                              font: GoogleFonts.inter(fontWeight: FontWeight.w500),
-                                              color: FlutterFlowTheme.of(context).secondaryText,
-                                              letterSpacing: 0.0,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF9E9E9E),
                                             ),
                                           ),
                                         ),
                                       );
                                     }
                                     
-                                    // Días del calendario
                                     List<DateTime?> days = getDaysInMonth(currentMonth);
                                     int dayIndex = index - 7;
                                     
@@ -426,15 +430,15 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                       child: Container(
                                         decoration: BoxDecoration(
                                           color: isSelected 
-                                              ? FlutterFlowTheme.of(context).primary
+                                              ? Color(0xFF00BFA5)
                                               : isToday 
-                                                  ? FlutterFlowTheme.of(context).accent1
+                                                  ? Color(0xFF00BFA5).withOpacity(0.1)
                                                   : Colors.transparent,
                                           borderRadius: BorderRadius.circular(8.0),
                                           border: isToday && !isSelected
                                               ? Border.all(
-                                                  color: FlutterFlowTheme.of(context).primary,
-                                                  width: 1.0,
+                                                  color: Color(0xFF00BFA5),
+                                                  width: 2.0,
                                                 )
                                               : null,
                                         ),
@@ -442,16 +446,14 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                                           child: Text(
                                             '${day.day}',
                                             textAlign: TextAlign.center,
-                                            style: FlutterFlowTheme.of(context).bodyMedium.override(
-                                              font: GoogleFonts.inter(
-                                                fontWeight: isSelected || isToday 
-                                                    ? FontWeight.w600 
-                                                    : FontWeight.w500,
-                                              ),
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: isSelected || isToday 
+                                                  ? FontWeight.w600 
+                                                  : FontWeight.w500,
                                               color: isSelected
-                                                  ? FlutterFlowTheme.of(context).primaryBackground
-                                                  : FlutterFlowTheme.of(context).primaryText,
-                                              letterSpacing: 0.0,
+                                                  ? Colors.white
+                                                  : Color(0xFF2E2E2E),
                                             ),
                                           ),
                                         ),
@@ -476,35 +478,40 @@ class _CalendarioWidgetState extends State<CalendarioWidget> {
                   MediaQuery.of(context).size.width > 600 ? 32.0 : 16.0,
                 ),
                 decoration: BoxDecoration(
-                  color: FlutterFlowTheme.of(context).secondaryBackground,
+                  color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      blurRadius: 4.0,
-                      color: Color(0x33000000),
+                      blurRadius: 10.0,
+                      color: Colors.black.withOpacity(0.1),
                       offset: Offset(0.0, -2.0),
                     ),
                   ],
                 ),
-                child: FFButtonWidget(
+                child: ElevatedButton(
                   onPressed: confirmSelection,
-                  text: 'Confirmar selección',
-                  options: FFButtonOptions(
-                    width: double.infinity,
-                    height: 50.0,
-                    padding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                    iconPadding: EdgeInsetsDirectional.fromSTEB(0.0, 0.0, 0.0, 0.0),
-                    color: FlutterFlowTheme.of(context).primary,
-                    textStyle: FlutterFlowTheme.of(context).titleMedium.override(
-                      font: GoogleFonts.interTight(fontWeight: FontWeight.w600),
-                      color: FlutterFlowTheme.of(context).primaryBackground,
-                      letterSpacing: 0.0,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF00BFA5),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    elevation: 0.0,
-                    borderSide: BorderSide(
-                      color: Colors.transparent,
-                      width: 1.0,
-                    ),
-                    borderRadius: BorderRadius.circular(12.0),
+                    elevation: 0,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 24),
+                      SizedBox(width: 12),
+                      Text(
+                        'Confirmar selección',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
