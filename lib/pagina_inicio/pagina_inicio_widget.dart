@@ -3,11 +3,15 @@ import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
 import 'dart:ui';
-import '/index.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:intl/intl.dart';
 import 'pagina_inicio_model.dart';
+import '../mapa_estacionamiento/mapa_estacionamiento_widget.dart';
+import '/mapa_estacionamiento/services/parking_api_service.dart';
+import '/mapa_estacionamiento/services/location_service.dart';
 export 'pagina_inicio_model.dart';
 
 class PaginaInicioWidget extends StatefulWidget {
@@ -28,39 +32,10 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
   
-  // Variables de estado
-  int _selectedNavIndex = 0;
-  String _currentLocation = 'Av. La Marina 890';
-  bool _hasNotifications = true;
-  int _notificationCount = 3;
-
-  // Datos de ubicaciones recientes
-  final List<Map<String, dynamic>> _recentLocations = [
-    {
-      'name': 'Centro Comercial Plaza Norte',
-      'address': 'Av. Alfredo Mendiola 3698',
-      'distance': '2.5 km',
-      'availability': 'Disponible',
-      'price': 'S/. 5.00/hora',
-      'rating': 4.5,
-    },
-    {
-      'name': 'Real Plaza Salaverry',
-      'address': 'Av. Salaverry 2370',
-      'distance': '3.2 km',
-      'availability': 'Casi lleno',
-      'price': 'S/. 6.00/hora',
-      'rating': 4.2,
-    },
-    {
-      'name': 'Centro Comercial Jockey Plaza',
-      'address': 'Av. Javier Prado Este 4200',
-      'distance': '5.1 km',
-      'availability': 'Disponible',
-      'price': 'S/. 8.00/hora',
-      'rating': 4.8,
-    },
-  ];
+  String _currentLocation = 'Obteniendo ubicación...';
+  bool _isLoadingLocation = true;
+  Position? _currentPosition;
+  List<Map<String, dynamic>> _nearbyParkings = [];
 
   @override
   void initState() {
@@ -69,7 +44,6 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
     _model.textController ??= TextEditingController();
     _model.textFieldFocusNode ??= FocusNode();
 
-    // Configurar animaciones
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
@@ -78,6 +52,8 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+
+    _loadLocationAndParkings();
   }
 
   @override
@@ -87,308 +63,262 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
     super.dispose();
   }
 
-  // Función para manejar búsqueda
-  void _handleSearch() {
-    String query = _model.textController.text.trim();
-    if (query.isNotEmpty) {
-      // Lógica de búsqueda
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Buscando: $query'),
-          backgroundColor: Color(0xFF00BFA5),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      // Navegar a página de resultados
-      // context.pushNamed(ResultadosWidget.routeName, extra: query);
+  Future<void> _loadLocationAndParkings() async {
+    setState(() {
+      _isLoadingLocation = true;
+      _currentLocation = 'Obteniendo ubicación GPS...';
+    });
+
+    try {
+      Position? position = await LocationService.getCurrentLocation();
+      
+      if (position != null) {
+        String locationName = await _getDetailedLocationName(position);
+        
+        setState(() {
+          _currentPosition = position;
+          _currentLocation = locationName;
+        });
+
+        final parkings = await ParkingApiService.getNearbyParkings(
+          userLat: position.latitude,
+          userLng: position.longitude,
+          radiusKm: 5.0,
+        );
+
+        parkings.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+        final closestParkings = parkings.take(5).toList();
+
+        setState(() {
+          _nearbyParkings = closestParkings;
+          _isLoadingLocation = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('${closestParkings.length} parkings encontrados'),
+                ],
+              ),
+              backgroundColor: Color(0xFF00BFA5),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _currentLocation = 'Lima, Perú';
+          _isLoadingLocation = false;
+        });
+
+        final parkings = await ParkingApiService.getNearbyParkings(
+          userLat: -12.0464,
+          userLng: -77.0428,
+          radiusKm: 5.0,
+        );
+
+        parkings.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
+
+        setState(() {
+          _nearbyParkings = parkings.take(5).toList();
+        });
+      }
+    } catch (e) {
+      print('Error: $e');
+      setState(() {
+        _isLoadingLocation = false;
+        _currentLocation = 'Lima, Perú';
+      });
     }
   }
 
-  // Función para mostrar notificaciones
-  void _showNotifications() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _buildNotificationSheet(),
-    );
+  Future<String> _getDetailedLocationName(Position position) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude, 
+        position.longitude,
+      );
+      
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        
+        String street = place.street ?? '';
+        String subLocality = place.subLocality ?? '';
+        String locality = place.locality ?? 'Lima';
+        
+        if (street.isNotEmpty && subLocality.isNotEmpty) {
+          return '$street, $subLocality, $locality';
+        } else if (subLocality.isNotEmpty) {
+          return '$subLocality, $locality';
+        } else if (locality.isNotEmpty) {
+          return locality;
+        }
+      }
+      
+      return 'Lima, Perú';
+    } catch (e) {
+      print('Error geocoding: $e');
+      return _getFallbackLocationName(position);
+    }
   }
 
-  // Función para seleccionar ubicación
-  void _selectLocation(Map<String, dynamic> location) {
-    setState(() {
-      _currentLocation = location['name'];
-    });
+  String _getFallbackLocationName(Position position) {
+    double lat = position.latitude;
+    double lng = position.longitude;
     
-    // Mostrar detalles de la ubicación
+    if (lat >= -12.08 && lat <= -12.05 && lng >= -77.08 && lng <= -77.02) {
+      return 'San Isidro, Lima';
+    } else if (lat >= -12.13 && lat <= -12.10 && lng >= -77.05 && lng <= -77.01) {
+      return 'Miraflores, Lima';
+    } else if (lat >= -12.16 && lat <= -12.13 && lng >= -77.03 && lng <= -76.97) {
+      return 'Santiago de Surco, Lima';
+    } else if (lat >= -12.07 && lat <= -12.03 && lng >= -77.08 && lng <= -77.02) {
+      return 'Lima Centro';
+    } else if (lat >= -11.95 && lat <= -11.92 && lng >= -77.08 && lng <= -77.04) {
+      return 'Los Olivos, Lima';
+    } else if (lat >= -11.89 && lat <= -11.86 && lng >= -77.08 && lng <= -77.04) {
+      return 'San Martín de Porres, Lima';
+    } else if (lat >= -11.88 && lat <= -11.83 && lng >= -77.06 && lng <= -77.02) {
+      return 'Carabayllo, Lima';
+    } else if (lat >= -12.08 && lat <= -12.04 && lng >= -77.18 && lng <= -77.12) {
+      return 'Callao';
+    } else if (lat >= -12.20 && lat <= -12.16 && lng >= -76.95 && lng <= -76.90) {
+      return 'La Molina, Lima';
+    } else if (lat >= -11.98 && lat <= -11.94 && lng >= -77.06 && lng <= -77.00) {
+      return 'San Juan de Lurigancho, Lima';
+    }
+    
+    return 'Lima, Perú';
+  }
+
+  void _goToMapWithParking(Map<String, dynamic> parking) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapaEstacionamientoWidget(),
+        settings: RouteSettings(
+          arguments: {
+            'selectedParking': parking,
+            'userPosition': _currentPosition,
+          },
+        ),
+      ),
+    );
+  }
+
+  void _showParkingOptions(Map<String, dynamic> parking) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _buildLocationDetailSheet(location),
-    );
-  }
-
-  // Widget para el bottom sheet de notificaciones
-  Widget _buildNotificationSheet() {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.6,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            margin: EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+      builder: (context) => Container(
+        padding: EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          
-          // Header
-          Padding(
-            padding: EdgeInsets.all(20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            SizedBox(height: 20),
+            Text(
+              parking['name'] ?? 'Estacionamiento',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 8),
+            Text(
+              parking['address'] ?? parking['location'] ?? 'Sin dirección',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            
+            SizedBox(height: 16),
+            
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Text(
-                  'Notificaciones',
-                  style: FlutterFlowTheme.of(context).headlineSmall.override(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2E2E2E),
+                Column(
+                  children: [
+                    Icon(Icons.location_on, color: Color(0xFF00BFA5), size: 20),
+                    SizedBox(height: 4),
+                    Text(
+                      parking['distanceText'] ?? 'N/A',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                Column(
+                  children: [
+                    Icon(Icons.payments, color: Color(0xFF00BFA5), size: 20),
+                    SizedBox(height: 4),
+                    Text(
+                      parking['price'] ?? 'S/. --',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                if (parking['rating'] != null)
+                  Column(
+                    children: [
+                      Icon(Icons.star, color: Colors.amber, size: 20),
+                      SizedBox(height: 4),
+                      Text(
+                        parking['rating'].toStringAsFixed(1),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ],
                   ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _hasNotifications = false;
-                      _notificationCount = 0;
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: Text('Marcar todo como leído'),
-                ),
               ],
             ),
-          ),
-
-          // Lista de notificaciones
-          Expanded(
-            child: ListView.builder(
-              itemCount: 3,
-              itemBuilder: (context, index) {
-                final notifications = [
-                  {
-                    'title': 'Reserva confirmada',
-                    'message': 'Tu espacio en Plaza Norte está confirmado',
-                    'time': '5 min',
-                    'icon': Icons.check_circle,
-                    'color': Colors.green,
-                  },
-                  {
-                    'title': 'Espacio liberado',
-                    'message': 'Nuevo espacio disponible en Jockey Plaza',
-                    'time': '15 min',
-                    'icon': Icons.local_parking,
-                    'color': Color(0xFF00BFA5),
-                  },
-                  {
-                    'title': 'Recordatorio',
-                    'message': 'Tu reserva vence en 30 minutos',
-                    'time': '1 hora',
-                    'icon': Icons.access_time,
-                    'color': Colors.orange,
-                  },
-                ];
-                
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: notifications[index]['color'] as Color,
-                    child: Icon(
-                      notifications[index]['icon'] as IconData,
-                      color: Colors.white,
-                    ),
+            
+            SizedBox(height: 24),
+            
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _goToMapWithParking(parking);
+                },
+                icon: Icon(Icons.map, size: 20),
+                label: Text('Ver en mapa'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Color(0xFF00BFA5),
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  title: Text(notifications[index]['title'] as String),
-                  subtitle: Text(notifications[index]['message'] as String),
-                  trailing: Text(
-                    notifications[index]['time'] as String,
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget para el bottom sheet de detalles de ubicación
-  Widget _buildLocationDetailSheet(Map<String, dynamic> location) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            margin: EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Nombre y rating
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          location['name'],
-                          style: FlutterFlowTheme.of(context).headlineSmall.override(
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF2E2E2E),
-                          ),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          Icon(Icons.star, color: Colors.amber, size: 20),
-                          SizedBox(width: 4),
-                          Text(location['rating'].toString()),
-                        ],
-                      ),
-                    ],
-                  ),
-                  
-                  SizedBox(height: 8),
-                  
-                  // Dirección
-                  Text(
-                    location['address'],
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  
-                  SizedBox(height: 20),
-                  
-                  // Información detallada
-                  _buildInfoCard('Distancia', location['distance'], Icons.location_on),
-                  SizedBox(height: 12),
-                  _buildInfoCard('Disponibilidad', location['availability'], Icons.local_parking),
-                  SizedBox(height: 12),
-                  _buildInfoCard('Precio', location['price'], Icons.payments),
-                  
-                  Spacer(),
-                  
-                  // Botones de acción
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            context.pushNamed(MapaEstacionamientoWidget.routeName);
-                          },
-                          icon: Icon(Icons.map),
-                          label: Text('Ver en mapa'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Color(0xFF00BFA5),
-                            side: BorderSide(color: Color(0xFF00BFA5)),
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            context.pushNamed(CalendarioWidget.routeName);
-                          },
-                          icon: Icon(Icons.calendar_today),
-                          label: Text('Reservar'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(0xFF00BFA5),
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Widget para cards de información
-  Widget _buildInfoCard(String title, String value, IconData icon) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Color(0xFF00BFA5), size: 24),
-          SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  elevation: 0,
                 ),
               ),
-              Text(
-                value,
-                style: TextStyle(
-                  color: Color(0xFF2E2E2E),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ],
+            ),
+            SizedBox(height: 24),
+          ],
+        ),
       ),
     );
   }
 
-  // Widget para ubicaciones recientes mejorado
-  Widget _buildLocationCard(Map<String, dynamic> location, int index) {
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300 + (index * 100)),
+  Widget _buildLocationCard(Map<String, dynamic> parking, int index) {
+    return Container(
       margin: EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => _selectLocation(location),
+        onTap: () => _showParkingOptions(parking),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
@@ -398,7 +328,6 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                 blurRadius: 8,
                 color: Color(0x1A000000),
                 offset: Offset(0, 2),
-                spreadRadius: 0,
               )
             ],
             borderRadius: BorderRadius.circular(16),
@@ -407,12 +336,13 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
             padding: EdgeInsets.all(16),
             child: Row(
               children: [
-                // Icono de estacionamiento
                 Container(
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    color: Color(0xFF00BFA5),
+                    color: parking['isAvailable'] ?? true 
+                        ? Color(0xFF00BFA5) 
+                        : Colors.grey,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Center(
@@ -429,7 +359,6 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                 
                 SizedBox(width: 16),
                 
-                // Información
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -439,28 +368,30 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                         children: [
                           Expanded(
                             child: Text(
-                              location['name'],
+                              parking['name'] ?? 'Estacionamiento',
                               style: TextStyle(
                                 color: Color(0xFF2E2E2E),
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Container(
                             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: location['availability'] == 'Disponible' 
+                              color: parking['isAvailable'] ?? true 
                                   ? Colors.green[50] 
-                                  : Colors.orange[50],
+                                  : Colors.red[50],
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              location['availability'],
+                              parking['isAvailable'] ?? true ? 'Disponible' : 'Lleno',
                               style: TextStyle(
-                                color: location['availability'] == 'Disponible' 
+                                color: parking['isAvailable'] ?? true 
                                     ? Colors.green[700] 
-                                    : Colors.orange[700],
+                                    : Colors.red[700],
                                 fontSize: 10,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -472,11 +403,13 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                       SizedBox(height: 4),
                       
                       Text(
-                        location['address'],
+                        parking['address'] ?? parking['location'] ?? 'Lima',
                         style: TextStyle(
                           color: Color(0xFF9E9E9E),
                           fontSize: 14,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       
                       SizedBox(height: 8),
@@ -486,7 +419,7 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                           Icon(Icons.location_on, size: 14, color: Color(0xFF9E9E9E)),
                           SizedBox(width: 4),
                           Text(
-                            location['distance'],
+                            parking['distanceText'] ?? 'N/A',
                             style: TextStyle(
                               color: Color(0xFF9E9E9E),
                               fontSize: 12,
@@ -496,7 +429,7 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                           Icon(Icons.payments, size: 14, color: Color(0xFF9E9E9E)),
                           SizedBox(width: 4),
                           Text(
-                            location['price'],
+                            parking['price'] ?? 'S/. --',
                             style: TextStyle(
                               color: Color(0xFF00BFA5),
                               fontSize: 12,
@@ -504,16 +437,18 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
                             ),
                           ),
                           Spacer(),
-                          Icon(Icons.star, size: 14, color: Colors.amber),
-                          SizedBox(width: 2),
-                          Text(
-                            location['rating'].toString(),
-                            style: TextStyle(
-                              color: Color(0xFF2E2E2E),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                          if (parking['rating'] != null) ...[
+                            Icon(Icons.star, size: 14, color: Colors.amber),
+                            SizedBox(width: 2),
+                            Text(
+                              parking['rating'].toStringAsFixed(1),
+                              style: TextStyle(
+                                color: Color(0xFF2E2E2E),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ],
@@ -538,323 +473,219 @@ class _PaginaInicioWidgetState extends State<PaginaInicioWidget>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         key: scaffoldKey,
         backgroundColor: Color(0xFF00BFA5),
-        body: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            children: [
-              // Header con gradiente
-              Container(
-                width: double.infinity,
-                height: 280.0,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF00BFA5), Color(0xFF26C6DA)],
-                    stops: [0.0, 1.0],
-                    begin: AlignmentDirectional(1.0, -1.0),
-                    end: AlignmentDirectional(-1.0, 1.0),
-                  ),
+        body: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              height: 260.0,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF00BFA5), Color(0xFF26C6DA)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header superior
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Icon(Icons.location_on, color: Colors.white, size: 20),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _currentLocation,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Stack(
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
                               children: [
-                                FlutterFlowIconButton(
-                                  borderRadius: 20.0,
-                                  buttonSize: 40.0,
-                                  icon: Icon(
-                                    Icons.notifications_outlined,
-                                    color: Colors.white,
-                                    size: 24.0,
-                                  ),
-                                  onPressed: _showNotifications,
-                                ),
-                                if (_hasNotifications)
-                                  Positioned(
-                                    right: 8,
-                                    top: 8,
-                                    child: Container(
-                                      padding: EdgeInsets.all(2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      constraints: BoxConstraints(
-                                        minWidth: 16,
-                                        minHeight: 16,
-                                      ),
-                                      child: Text(
-                                        '$_notificationCount',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
+                                if (_isLoadingLocation)
+                                  SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                     ),
+                                  )
+                                else
+                                  Icon(Icons.location_on, color: Colors.white, size: 20),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _currentLocation,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
                                   ),
+                                ),
                               ],
                             ),
-                          ],
-                        ),
-                        
-                        // Título principal
-                        Text(
-                          'Encuentra el mejor\nespacio de\nestacionamiento',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            height: 1.2,
                           ),
+                          FlutterFlowIconButton(
+                            borderRadius: 20,
+                            buttonSize: 40,
+                            icon: Icon(Icons.refresh, color: Colors.white, size: 24),
+                            onPressed: _loadLocationAndParkings,
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Encuentra el mejor\nespacio de\nestacionamiento',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          height: 1.2,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              
-              // Body principal
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  margin: EdgeInsets.only(top: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(height: 24),
-                        
-                        // Barra de búsqueda mejorada
-                        Container(
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: Color(0xFFF5F5F5),
-                            boxShadow: [
-                              BoxShadow(
-                                blurRadius: 8,
-                                color: Color(0x1A000000),
-                                offset: Offset(0, 2),
-                              )
-                            ],
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              Padding(
-                                padding: EdgeInsets.only(left: 16),
-                                child: Icon(
-                                  Icons.search,
-                                  color: Color(0xFF9E9E9E),
-                                  size: 24,
-                                ),
-                              ),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _model.textController,
-                                  focusNode: _model.textFieldFocusNode,
-                                  onFieldSubmitted: (_) => _handleSearch(),
-                                  decoration: InputDecoration(
-                                    hintText: '¿Dónde quieres estacionar?',
-                                    hintStyle: TextStyle(
-                                      color: Color(0xFF9E9E9E),
-                                      fontSize: 16,
-                                    ),
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  style: TextStyle(
-                                    color: Color(0xFF2E2E2E),
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
-                              FlutterFlowIconButton(
-                                borderRadius: 20,
-                                buttonSize: 40,
-                                icon: Icon(
-                                  Icons.map_outlined,
-                                  color: Color(0xFF00BFA5),
-                                  size: 24,
-                                ),
-                                onPressed: () {
-                                  context.pushNamed(MapaEstacionamientoWidget.routeName);
-                                },
-                              ),
-                              SizedBox(width: 8),
-                            ],
-                          ),
-                        ),
-                        
-                        SizedBox(height: 32),
-                        
-                        // Sección de ubicaciones recientes
-                        Text(
-                          'Ubicaciones recientes',
-                          style: TextStyle(
-                            color: Color(0xFF2E2E2E),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        
-                        SizedBox(height: 16),
-                        
-                        // Lista de ubicaciones
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _recentLocations.length,
-                            itemBuilder: (context, index) {
-                              return _buildLocationCard(_recentLocations[index], index);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              
-              // Bottom Navigation mejorado
-              Container(
+            ),
+            
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.only(top: 20),
                 decoration: BoxDecoration(
-                  color: Color(0xFF2E2E2E),
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 8,
-                      color: Color(0x1A000000),
-                      offset: Offset(0, -2),
-                    ),
-                  ],
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildNavItem(0, Icons.home, 'Inicio', () {
-                          // Ya estamos en inicio
-                        }),
-                        _buildNavItem(1, Icons.calendar_today, 'Calendario', () {
-                          context.pushNamed(CalendarioWidget.routeName);
-                        }),
-                        
-                        // Botón central especial
-                        GestureDetector(
-                          onTap: _handleSearch,
-                          child: Container(
-                            width: 56,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(24, 24, 24, 0),
+                      child: Column(
+                        children: [
+                          Container(
                             height: 56,
                             decoration: BoxDecoration(
-                              color: Color(0xFF00BFA5),
-                              shape: BoxShape.circle,
+                              color: Color(0xFFF5F5F5),
+                              borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
                                   blurRadius: 8,
-                                  color: Color(0x3300BFA5),
-                                  offset: Offset(0, 4),
+                                  color: Color(0x1A000000),
+                                  offset: Offset(0, 2),
                                 ),
                               ],
                             ),
-                            child: Icon(
-                              Icons.search,
-                              color: Colors.white,
-                              size: 28,
+                            child: Row(
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.only(left: 16),
+                                  child: Icon(Icons.search, color: Color(0xFF9E9E9E), size: 24),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _model.textController,
+                                    decoration: InputDecoration(
+                                      hintText: '¿Dónde quieres estacionar?',
+                                      hintStyle: TextStyle(color: Color(0xFF9E9E9E), fontSize: 16),
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                    ),
+                                    style: TextStyle(color: Color(0xFF2E2E2E), fontSize: 16),
+                                  ),
+                                ),
+                                FlutterFlowIconButton(
+                                  borderRadius: 20,
+                                  buttonSize: 40,
+                                  icon: Icon(Icons.map_outlined, color: Color(0xFF00BFA5), size: 24),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => MapaEstacionamientoWidget(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                SizedBox(width: 8),
+                              ],
                             ),
                           ),
-                        ),
-                        
-                        _buildNavItem(3, Icons.share, 'Compartir', () {
-                          // Implementar compartir
-                        }),
-                        _buildNavItem(4, Icons.person_outline, 'Perfil', () {
-                          // Navegar a perfil
-                        }),
-                      ],
+                          
+                          SizedBox(height: 24),
+                          
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Parkings cercanos',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF2E2E2E),
+                                ),
+                              ),
+                              if (_nearbyParkings.isNotEmpty)
+                                Text(
+                                  '${_nearbyParkings.length} encontrados',
+                                  style: TextStyle(color: Color(0xFF00BFA5), fontSize: 14),
+                                ),
+                            ],
+                          ),
+                          
+                          SizedBox(height: 16),
+                        ],
+                      ),
                     ),
-                  ),
+                    
+                    Expanded(
+                      child: _isLoadingLocation
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  CircularProgressIndicator(color: Color(0xFF00BFA5)),
+                                  SizedBox(height: 16),
+                                  Text('Buscando parkings cercanos...'),
+                                ],
+                              ),
+                            )
+                          : _nearbyParkings.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.local_parking, size: 80, color: Colors.grey),
+                                      SizedBox(height: 16),
+                                      Text('No hay parkings cercanos'),
+                                      SizedBox(height: 8),
+                                      TextButton(
+                                        onPressed: _loadLocationAndParkings,
+                                        child: Text('Reintentar'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Scrollbar(
+                                  thumbVisibility: true,
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.fromLTRB(24, 0, 24, 24),
+                                    itemCount: _nearbyParkings.length,
+                                    physics: AlwaysScrollableScrollPhysics(),
+                                    itemBuilder: (context, index) {
+                                      return _buildLocationCard(_nearbyParkings[index], index);
+                                    },
+                                  ),
+                                ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(int index, IconData icon, String label, VoidCallback onTap) {
-    bool isSelected = index == _selectedNavIndex;
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedNavIndex = index;
-        });
-        onTap();
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected ? Color(0xFF00BFA5) : Color(0xFF9E9E9E),
-            size: 28,
-          ),
-          SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Color(0xFF00BFA5) : Color(0xFF9E9E9E),
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

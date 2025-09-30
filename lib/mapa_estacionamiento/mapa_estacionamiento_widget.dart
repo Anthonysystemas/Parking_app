@@ -27,6 +27,7 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
   List<Map<String, dynamic>> parkingData = [];
   bool isLoading = true;
   Position? currentPosition;
+  Map<String, dynamic>? pendingSelectedParking;
 
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -37,51 +38,115 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
 
     _model.textController ??= TextEditingController();
     _model.textFieldFocusNode ??= FocusNode();
-    
-    _loadNearbyParkings();
   }
 
-  void _loadNearbyParkings() async {
-    try {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // RECIBIR parking seleccionado desde PaginaInicio
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args != null && args is Map<String, dynamic>) {
+      final selectedParking = args['selectedParking'] as Map<String, dynamic>?;
+      final userPosition = args['userPosition'] as Position?;
+      
+      if (userPosition != null) {
+        currentPosition = userPosition;
+      }
+      
+      // Guardar el parking para seleccionarlo después de cargar los datos
+      if (selectedParking != null) {
+        pendingSelectedParking = selectedParking;
+      }
+    }
+    
+    // Cargar parkings
+    if (parkingData.isEmpty) {
+      _loadNearbyParkings();
+    }
+  }
+
+ void _loadNearbyParkings() async {
+  setState(() {
+    isLoading = true;
+  });
+
+  try {
+    // Si no tenemos posición, intentar obtenerla
+    if (currentPosition == null) {
       currentPosition = await ParkingApiService.getCurrentLocation();
+    }
+    
+    final nearbyParkings = await ParkingApiService.getNearbyParkings(
+      userLat: currentPosition?.latitude,
+      userLng: currentPosition?.longitude,
+      radiusKm: 5.0,
+    );
+    
+    if (mounted) {
+      setState(() {
+        parkingData = nearbyParkings;
+        isLoading = false;
+      });
       
-      final nearbyParkings = await ParkingApiService.getNearbyParkings(
-        userLat: currentPosition?.latitude,
-        userLng: currentPosition?.longitude,
-        radiusKm: 5.0,
+      // IMPORTANTE: Seleccionar el parking DESPUÉS de cargar los datos
+      if (pendingSelectedParking != null && parkingData.isNotEmpty) {
+        // Esperar un frame para que el mapa se renderice
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _selectPendingParking();
+        });
+      }
+      
+      if (currentPosition != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Encontrados ${parkingData.length} parkings cercanos'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    print('Error cargando parkings: $e');
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+}
+  // Método para seleccionar el parking pendiente
+  void _selectPendingParking() {
+    if (pendingSelectedParking == null || parkingData.isEmpty) return;
+    
+    // Buscar el parking por ID o nombre
+    int index = parkingData.indexWhere((p) => 
+      p['id'] == pendingSelectedParking!['id'] || 
+      p['name'] == pendingSelectedParking!['name']
+    );
+    
+    if (index >= 0) {
+      setState(() {
+        selectedParkingIndex = index;
+      });
+      
+      // Limpiar el parking pendiente
+      pendingSelectedParking = null;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Parking seleccionado en el mapa'),
+            ],
+          ),
+          backgroundColor: Color(0xFF00BFA5),
+          duration: Duration(seconds: 2),
+        ),
       );
-      
-      if (mounted) {
-        setState(() {
-          parkingData = nearbyParkings;
-          isLoading = false;
-        });
-        
-        if (currentPosition != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Encontrados ${parkingData.length} parkings cercanos'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Mostrando parkings en Lima Centro'),
-              backgroundColor: Colors.blue,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error cargando parkings: $e');
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
     }
   }
 
@@ -139,7 +204,7 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Encontrados ${parkingData.length} parkings en $query'),
-            backgroundColor: Color(0xFF00BFA6),
+            backgroundColor: Color(0xFF00BFA5),
           ),
         );
       } else {
@@ -222,7 +287,7 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                 Text('Ubicación actualizada con precisión'),
               ],
             ),
-            backgroundColor: Color(0xFF00BFA6),
+            backgroundColor: Color(0xFF00BFA5),
             duration: Duration(seconds: 2),
           ),
         );
@@ -304,13 +369,13 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(color: Colors.blue),
+                          CircularProgressIndicator(color: Color(0xFF00BFA5)),
                           SizedBox(height: 20),
                           Text(
                             'Buscando parkings cercanos...',
                             style: TextStyle(
                               fontSize: 16,
-                              color: Colors.blue[800],
+                              color: Color(0xFF00BFA5),
                             ),
                           ),
                           if (currentPosition == null) ...[
@@ -330,7 +395,7 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                               icon: Icon(Icons.refresh),
                               label: Text('Reintentar'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: Color(0xFF00BFA5),
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -347,399 +412,327 @@ class _MapaEstacionamientoWidgetState extends State<MapaEstacionamientoWidget> {
                     currentPosition: currentPosition,
                   ),
                 
-                if (!isLoading && selectedParkingIndex >= 0 && selectedParkingIndex < parkingData.length)
-                  Positioned(
-                    bottom: 20,
-                    left: 16,
-                    right: 16,
-                    child: Container(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.45,
+              if (!isLoading && selectedParkingIndex >= 0 && selectedParkingIndex < parkingData.length)
+  Positioned(
+    bottom: 0,
+    left: 0,
+    right: 0,
+    child: Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.6, // Aumentado de 0.45 a 0.6
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 15,
+            offset: Offset(0, -5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header fijo
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      parkingData[selectedParkingIndex]['price'] ?? 'S/. --',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF00BFA5),
                       ),
-                      padding: EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
-                            blurRadius: 15,
-                            offset: Offset(0, 5),
+                    ),
+                    Text(
+                      'por hora',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: IconButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedParkingIndex = -1;
+                      });
+                    },
+                    icon: Icon(Icons.close, size: 18, color: Colors.grey[600]),
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Contenido con scroll
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    parkingData[selectedParkingIndex]['name'] ?? 'Estacionamiento',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  
+                  SizedBox(height: 8),
+                  
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, color: Colors.grey[600], size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          parkingData[selectedParkingIndex]['location'] ?? 
+                          parkingData[selectedParkingIndex]['address'] ?? 
+                          'Ubicación no disponible',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[700],
+                            height: 1.3,
                           ),
-                        ],
+                        ),
                       ),
-                      child: SingleChildScrollView(
-                        child: Column(
+                    ],
+                  ),
+                  
+                  SizedBox(height: 12),
+                  
+                  Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Color(0xFF00BFA5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      parkingData[selectedParkingIndex]['price'] ?? 'S/. --',
-                                      style: TextStyle(
-                                        fontSize: 32,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF00BFA6),
-                                      ),
-                                    ),
-                                    Text(
-                                      'por hora',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: IconButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        selectedParkingIndex = -1;
-                                      });
-                                    },
-                                    icon: Icon(Icons.close, size: 18, color: Colors.grey[600]),
-                                    padding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            
-                            SizedBox(height: 16),
-                            
+                            Icon(Icons.access_time, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
                             Text(
-                              parkingData[selectedParkingIndex]['name'] ?? 'Estacionamiento',
+                              parkingData[selectedParkingIndex]['opening_hours'] ?? '24h',
                               style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            
-                            SizedBox(height: 8),
-                            
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.location_on,
-                                  color: Colors.grey[600],
-                                  size: 18,
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    parkingData[selectedParkingIndex]['location'] ?? 
-                                    parkingData[selectedParkingIndex]['address'] ?? 
-                                    'Ubicación no disponible',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            
-                            SizedBox(height: 12),
-                            
-                            Row(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Color(0xFF00BFA6),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.access_time,
-                                        color: Colors.white,
-                                        size: 14,
-                                      ),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        parkingData[selectedParkingIndex]['opening_hours'] ?? '24h',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                
-                                SizedBox(width: 12),
-                                
-                                if (parkingData[selectedParkingIndex]['distanceText'] != null)
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.directions_walk,
-                                        color: Color(0xFF00BFA6),
-                                        size: 16,
-                                      ),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        parkingData[selectedParkingIndex]['distanceText'] ?? '',
-                                        style: TextStyle(
-                                          color: Color(0xFF00BFA6),
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                            
-                            SizedBox(height: 16),
-                            
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 10,
-                                          height: 10,
-                                          decoration: BoxDecoration(
-                                            color: parkingData[selectedParkingIndex]['isAvailable'] ?? true 
-                                                ? Color(0xFF00BFA6) 
-                                                : Colors.red,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          'Espacios disponibles',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey[700],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      parkingData[selectedParkingIndex]['isAvailable'] ?? true
-                                          ? '${parkingData[selectedParkingIndex]['available'] ?? '15'} de ${parkingData[selectedParkingIndex]['total'] ?? '50'} disponibles'
-                                          : 'No hay espacios disponibles',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (parkingData[selectedParkingIndex]['rating'] != null)
-                                  Row(
-                                    children: [
-                                      Icon(Icons.star, color: Colors.amber, size: 16),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        parkingData[selectedParkingIndex]['rating'].toStringAsFixed(1),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                              ],
-                            ),
-                            
-                            if (parkingData[selectedParkingIndex]['features'] != null && 
-                                parkingData[selectedParkingIndex]['features'].isNotEmpty) ...[
-                              SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: parkingData[selectedParkingIndex]['features']
-                                    .take(4)
-                                    .map<Widget>((feature) => Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Color(0xFF00BFA6).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    feature.toString(),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF00BFA6),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ))
-                                .toList(),
-                              ),
-                            ],
-                            
-                            if (parkingData[selectedParkingIndex]['description'] != null) ...[
-                              SizedBox(height: 8),
-                              Text(
-                                parkingData[selectedParkingIndex]['description'],
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                  height: 1.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                            
-                            SizedBox(height: 16),
-                            
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: parkingData[selectedParkingIndex]['isAvailable'] ?? true
-                                    ? () {
-                                        context.pushNamed(
-                                          ReservarParkingWidget.routeName,
-                                          extra: parkingData[selectedParkingIndex],
-                                        );
-                                      }
-                                    : null,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Color(0xFF00BFA6),
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  elevation: 0,
-                                  disabledBackgroundColor: Colors.grey[300],
-                                ),
-                                child: Text(
-                                  parkingData[selectedParkingIndex]['isAvailable'] ?? true ? 'RESERVAR' : 'NO DISPONIBLE',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                
-                Align(
-                  alignment: AlignmentDirectional(0.0, -1.0),
-                  child: Container(
-                    child: Padding(
-                      padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
-                      child: TextFormField(
-                        controller: _model.textController,
-                        focusNode: _model.textFieldFocusNode,
-                        autofocus: false,
-                        textInputAction: TextInputAction.search,
-                        obscureText: false,
-                        onFieldSubmitted: (value) {
-                          _searchParkings(value);
-                        },
-                        onChanged: (value) {
-                          if (value.length > 2) {
-                            Future.delayed(Duration(milliseconds: 500), () {
-                              if (_model.textController?.text == value) {
-                                _searchParkings(value);
-                              }
-                            });
-                          } else if (value.isEmpty) {
-                            _loadNearbyParkings();
-                          }
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por distrito, zona o nombre...',
-                          hintStyle: TextStyle(
-                            color: Color(0xFF999999),
-                            fontSize: 16.0,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.transparent,
-                              width: 0.0,
-                            ),
-                            borderRadius: BorderRadius.circular(25.0),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0xFF00D4AA),
-                              width: 0.0,
-                            ),
-                            borderRadius: BorderRadius.circular(25.0),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0x00000000),
-                              width: 0.0,
-                            ),
-                            borderRadius: BorderRadius.circular(25.0),
-                          ),
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Color(0x00000000),
-                              width: 0.0,
-                            ),
-                            borderRadius: BorderRadius.circular(25.0),
-                          ),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: EdgeInsetsDirectional.fromSTEB(20.0, 12.0, 20.0, 12.0),
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            color: Color(0xFF666666),
-                            size: 20.0,
-                          ),
-                          suffixIcon: GestureDetector(
-                            onTap: _goToUserLocation,
-                            child: Container(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(
-                                Icons.my_location_rounded,
-                                color: Color(0xFF00BFA6),
-                                size: 20.0,
+                      
+                      SizedBox(width: 12),
+                      
+                      if (parkingData[selectedParkingIndex]['distanceText'] != null)
+                        Row(
+                          children: [
+                            Icon(Icons.directions_walk, color: Color(0xFF00BFA5), size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              parkingData[selectedParkingIndex]['distanceText'] ?? '',
+                              style: TextStyle(
+                                color: Color(0xFF00BFA5),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
+                          ],
+                        ),
+                    ],
+                  ),
+                  
+                  SizedBox(height: 16),
+                  
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: parkingData[selectedParkingIndex]['isAvailable'] ?? true 
+                                      ? Color(0xFF00BFA5) 
+                                      : Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Espacios disponibles',
+                                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            parkingData[selectedParkingIndex]['isAvailable'] ?? true
+                                ? '${parkingData[selectedParkingIndex]['available'] ?? '15'} de ${parkingData[selectedParkingIndex]['total'] ?? '50'} disponibles'
+                                : 'No hay espacios disponibles',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (parkingData[selectedParkingIndex]['rating'] != null)
+                        Row(
+                          children: [
+                            Icon(Icons.star, color: Colors.amber, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              parkingData[selectedParkingIndex]['rating'].toStringAsFixed(1),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                  
+                  if (parkingData[selectedParkingIndex]['features'] != null && 
+                      parkingData[selectedParkingIndex]['features'].isNotEmpty) ...[
+                    SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: parkingData[selectedParkingIndex]['features']
+                          .take(4)
+                          .map<Widget>((feature) => Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Color(0xFF00BFA5).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          feature.toString(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF00BFA5),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 16.0,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        cursorColor: Color(0xFF00D4AA),
-                        validator: _model.textControllerValidator.asValidator(context),
+                      ))
+                      .toList(),
+                    ),
+                  ],
+                  
+                  if (parkingData[selectedParkingIndex]['description'] != null) ...[
+                    SizedBox(height: 8),
+                    Text(
+                      parkingData[selectedParkingIndex]['description'],
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        height: 1.3,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  
+                  SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+          
+          // Botón RESERVAR fijo al fondo
+          Container(
+            padding: EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: Offset(0, -5),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: parkingData[selectedParkingIndex]['isAvailable'] ?? true
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ReservarParkingWidget(),
+                              settings: RouteSettings(
+                                arguments: parkingData[selectedParkingIndex],
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(0xFF00BFA5),
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                    disabledBackgroundColor: Colors.grey[300],
+                  ),
+                  child: Text(
+                    parkingData[selectedParkingIndex]['isAvailable'] ?? true 
+                      ? 'RESERVAR' 
+                      : 'NO DISPONIBLE',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
               ],
             ),
           ),

@@ -1,17 +1,16 @@
-import '/flutter_flow/flutter_flow_drop_down.dart';
 import '/flutter_flow/flutter_flow_icon_button.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
 import '/flutter_flow/flutter_flow_util.dart';
 import '/flutter_flow/flutter_flow_widgets.dart';
-import '/flutter_flow/form_field_controller.dart';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'reservar_parking_model.dart';
 export 'reservar_parking_model.dart';
+import 'package:estacionamiento/TicketReserva/ticket_reserva.dart';
 
 class ReservarParkingWidget extends StatefulWidget {
   const ReservarParkingWidget({super.key});
+  // ... resto del código
 
   static String routeName = 'reservar_parking';
   static String routePath = '/reservarParking';
@@ -24,10 +23,13 @@ class _ReservarParkingWidgetState extends State<ReservarParkingWidget> {
   late ReservarParkingModel _model;
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  double basePrice = 15.0;
-  int hours = 8;
-  double extraServices = 0.0;
   Map<String, dynamic> parking = {};
+  double basePrice = 4.0;
+  
+  DateTime selectedDate = DateTime.now();
+  TimeOfDay? startTime;
+  TimeOfDay? endTime;
+  double totalHours = 8.0;
 
   @override
   void initState() {
@@ -39,26 +41,18 @@ class _ReservarParkingWidgetState extends State<ReservarParkingWidget> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // RECIBIR DATOS DEL PARKING
     final args = ModalRoute.of(context)?.settings.arguments;
     if (args != null && args is Map<String, dynamic>) {
-      setState(() {
-        parking = args;
-      });
+      parking = args;
       
-      // Extraer precio base
       if (parking['price'] != null) {
         String priceStr = parking['price'].toString();
         RegExp regExp = RegExp(r'\d+');
         Match? match = regExp.firstMatch(priceStr);
         if (match != null) {
-          setState(() {
-            basePrice = double.tryParse(match.group(0)!) ?? 15.0;
-          });
+          basePrice = double.tryParse(match.group(0)!) ?? 4.0;
         }
       }
-      
-      print('Parking recibido: ${parking['name']}');
     }
   }
 
@@ -68,426 +62,407 @@ class _ReservarParkingWidgetState extends State<ReservarParkingWidget> {
     super.dispose();
   }
 
-  void _calculateTotal() {
+  Future<void> selectDate(BuildContext ctx) async {
+    final picked = await showDatePicker(
+      context: ctx,
+      initialDate: selectedDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(Duration(days: 90)),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            primaryColor: Color(0xFF00BFA5),
+            colorScheme: ColorScheme.light(primary: Color(0xFF00BFA5)),
+            buttonTheme: ButtonThemeData(textTheme: ButtonTextTheme.primary),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null) {
+      setState(() => selectedDate = picked);
+    }
+  }
+
+  Future<void> selectStartTime(BuildContext ctx) async {
+    final picked = await showTimePicker(
+      context: ctx,
+      initialTime: startTime ?? TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            primaryColor: Color(0xFF00BFA5),
+            colorScheme: ColorScheme.light(primary: Color(0xFF00BFA5)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null) {
+      setState(() {
+        startTime = picked;
+        if (endTime != null) calculateHours();
+      });
+    }
+  }
+
+  Future<void> selectEndTime(BuildContext ctx) async {
+    if (startTime == null) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(content: Text('Selecciona primero la hora de entrada')),
+      );
+      return;
+    }
+    
+    final picked = await showTimePicker(
+      context: ctx,
+      initialTime: endTime ?? TimeOfDay(hour: (startTime!.hour + 8) % 24, minute: 0),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            primaryColor: Color(0xFF00BFA5),
+            colorScheme: ColorScheme.light(primary: Color(0xFF00BFA5)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (picked != null) {
+      setState(() {
+        endTime = picked;
+        calculateHours();
+      });
+    }
+  }
+
+  void calculateHours() {
+    if (startTime == null || endTime == null) return;
+    
+    double start = startTime!.hour + startTime!.minute / 60.0;
+    double end = endTime!.hour + endTime!.minute / 60.0;
+    
+    if (end <= start) end += 24.0;
+    
     setState(() {
-      extraServices = 0;
-      if (_model.checkboxValue1 == true) extraServices += 10;
-      if (_model.checkboxValue2 == true) extraServices += 5;
-      if (_model.checkboxValue3 == true) extraServices += 8;
+      totalHours = end - start;
+      if (totalHours < 1.0) totalHours = 1.0;
     });
   }
 
-  double get totalPrice => (basePrice * hours) + extraServices;
+  double get totalPrice => basePrice * totalHours;
+
+  void confirmReservation() {
+    if (startTime == null || endTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Completa todos los horarios'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    // Generar código de reserva único
+    final codigoReserva = 'PK${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    
+    // Navegar al ticket
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TicketReserva(
+          parking: parking,
+          selectedDate: selectedDate,
+          startTime: startTime!,
+          endTime: endTime!,
+          totalHours: totalHours,
+          totalPrice: totalPrice,
+          codigoReserva: codigoReserva,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
-      child: Scaffold(
-        key: scaffoldKey,
-        backgroundColor: Color(0xFFF8F9FA),
-        floatingActionButton: Align(
-          alignment: AlignmentDirectional(0.0, 1.0),
-          child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(35.0, 0.0, 8.0, 16.0),
-            child: Container(
-              width: double.infinity,
-              height: 56.0,
-              decoration: BoxDecoration(
-                color: Color(0xFF00BFA5),
-                borderRadius: BorderRadius.circular(12.0),
-              ),
-              child: FFButtonWidget(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('Reserva Confirmada'),
-                      content: Text(
-                        'Tu estacionamiento "${parking['name'] ?? 'Parking'}" ha sido reservado por $hours horas.\n\nTotal: S/. ${totalPrice.toStringAsFixed(2)}'
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            Navigator.pop(context);
-                          },
-                          child: Text('OK'),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                text: 'Reservar Ahora',
-                options: FFButtonOptions(
-                  width: double.infinity,
-                  height: 50.0,
-                  padding: EdgeInsets.all(8.0),
-                  color: Color(0xFF00BFA5),
-                  textStyle: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18.0,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.2,
-                  ),
-                  elevation: 0.0,
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-              ),
-            ),
-          ),
+    return Scaffold(
+      key: scaffoldKey,
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
         ),
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          automaticallyImplyLeading: false,
-          leading: FlutterFlowIconButton(
-            borderRadius: 20.0,
-            buttonSize: 40.0,
-            icon: Icon(Icons.arrow_back, color: Color(0xFF2E2E2E), size: 24.0),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: Text(
-            'Reservar Estacionamiento',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF2E2E2E),
-            ),
-          ),
-          actions: [
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(16.0, 0.0, 16.0, 0.0),
-              child: FlutterFlowIconButton(
-                borderRadius: 20.0,
-                buttonSize: 40.0,
-                icon: Icon(Icons.favorite_border, color: Color(0xFF2E2E2E), size: 24.0),
-                onPressed: () {},
-              ),
-            ),
-          ],
-          centerTitle: false,
-          elevation: 0.0,
-        ),
-        body: SafeArea(
-          top: true,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                // Imagen del parking
-                Image.network(
-                  'https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800',
-                  width: double.infinity,
-                  height: 200.0,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    height: 200,
+        title: Text('Reservar Estacionamiento', style: TextStyle(color: Colors.black, fontSize: 17)),
+        actions: [
+          IconButton(icon: Icon(Icons.favorite_border, color: Colors.black), onPressed: () {}),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: 180,
                     color: Colors.grey[300],
                     child: Icon(Icons.local_parking, size: 80, color: Colors.grey[600]),
                   ),
-                ),
-                
-                // Card de información principal
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
-                  child: Card(
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
+                  
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
                     color: Colors.white,
-                    elevation: 2.0,
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      parking['name'] ?? 'Estacionamiento Central Plaza',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF2E2E2E),
-                                      ),
+                              Text(parking['name'] ?? 'Estacionamiento 19', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                              SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.star, color: Colors.amber, size: 14),
+                                  Icon(Icons.star, color: Colors.amber, size: 14),
+                                  Icon(Icons.star, color: Colors.amber, size: 14),
+                                  Icon(Icons.star_half, color: Colors.amber, size: 14),
+                                  Icon(Icons.star_border, color: Colors.amber, size: 14),
+                                  SizedBox(width: 4),
+                                  Text('3.5', style: TextStyle(fontSize: 13)),
+                                ],
+                              ),
+                              SizedBox(height: 2),
+                              Text('Lima', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('S/. 4-6', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF00BFA5))),
+                            Text('por hora', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  SizedBox(height: 8),
+                  
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
+                    color: Colors.white,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Fecha y Horarios', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        SizedBox(height: 16),
+                        
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => selectDate(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Color(0xFF00BFA5), width: 1.5),
+                                borderRadius: BorderRadius.circular(10),
+                                color: Color(0xFFE0F7F4),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Color(0xFF00BFA5),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                    if (parking['rating'] != null)
-                                      Padding(
-                                        padding: EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
-                                        child: Row(
-                                          children: [
-                                            ...List.generate(
-                                              5,
-                                              (index) => Icon(
-                                                index < (parking['rating'] ?? 0).floor()
-                                                    ? Icons.star
-                                                    : Icons.star_border,
-                                                color: Colors.orange,
-                                                size: 16.0,
-                                              ),
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              parking['rating']?.toStringAsFixed(1) ?? '4.2',
-                                              style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 14),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              Text(
-                                parking['price'] ?? 'S/. 15',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF00BFA5),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(0.0, 8.0, 0.0, 0.0),
-                            child: Row(
-                              children: [
-                                Icon(Icons.location_on, color: Color(0xFF9E9E9E), size: 18.0),
-                                SizedBox(width: 8.0),
-                                Expanded(
-                                  child: Text(
-                                    parking['address'] ?? parking['location'] ?? 'Av. Libertador 1234, Centro',
-                                    style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 14),
+                                    child: Icon(Icons.calendar_today, color: Colors.white, size: 20),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('FECHA', style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                                        Text(DateFormat('dd/MM/yyyy').format(selectedDate), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(Icons.edit, color: Color(0xFF00BFA5), size: 18),
+                                ],
+                              ),
                             ),
                           ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(0.0, 4.0, 0.0, 0.0),
-                            child: Text(
-                              'por hora',
-                              style: TextStyle(color: Color(0xFF9E9E9E), fontSize: 12),
+                        ),
+                        
+                        SizedBox(height: 12),
+                        
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => selectStartTime(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: startTime != null ? Color(0xFF00BFA5) : Colors.grey[300]!, width: 1.5),
+                                borderRadius: BorderRadius.circular(10),
+                                color: startTime != null ? Color(0xFF00BFA5).withOpacity(0.1) : Colors.grey[50],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: startTime != null ? Color(0xFF00BFA5) : Colors.grey[400],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(Icons.access_time, color: Colors.white, size: 20),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('HORA ENTRADA', style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                                        Text(startTime?.format(context) ?? 'Seleccionar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: startTime != null ? Colors.black : Colors.grey[500])),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        
+                        SizedBox(height: 12),
+                        
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => selectEndTime(context),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: endTime != null ? Color(0xFF00BFA5) : Colors.grey[300]!, width: 1.5),
+                                borderRadius: BorderRadius.circular(10),
+                                color: endTime != null ? Color(0xFF00BFA5).withOpacity(0.1) : Colors.grey[50],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: endTime != null ? Color(0xFF00BFA5) : Colors.grey[400],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(Icons.logout, color: Colors.white, size: 20),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('HORA SALIDA', style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.w600)),
+                                        Text(endTime?.format(context) ?? 'Seleccionar', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: endTime != null ? Colors.black : Colors.grey[500])),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        SizedBox(height: 16),
+                        
+                        Container(
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Color(0xFF00BFA5),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.schedule, color: Colors.white, size: 18),
+                              SizedBox(width: 8),
+                              Text('Duracion: ${totalHours.toStringAsFixed(1)} horas', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                
-                // Card Fecha y Hora
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
-                  child: Card(
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
+                  
+                  SizedBox(height: 8),
+                  
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
                     color: Colors.white,
-                    elevation: 2.0,
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Seleccionar fecha y hora',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF2E2E2E),
-                            ),
-                          ),
-                          SizedBox(height: 16),
-                          Container(
-                            padding: EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Color(0x4D00BFA5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Center(
-                              child: Text(
-                                'Duración total: $hours horas',
-                                style: TextStyle(
-                                  color: Color(0xFF00BFA5),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Espacios disponibles', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                        Text('25 de 20', style: TextStyle(color: Color(0xFF00BFA5), fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
                     ),
                   ),
-                ),
-                
-                // Card Detalles
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 0.0),
-                  child: Card(
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
-                    color: Colors.white,
-                    elevation: 2.0,
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Detalles',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF2E2E2E),
-                            ),
-                          ),
-                          SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Espacios disponibles', style: TextStyle(fontSize: 14)),
-                              Text(
-                                '${parking['available'] ?? '23'} de ${parking['total'] ?? '50'}',
-                                style: TextStyle(
-                                  color: Color(0xFF00BFA5),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 16),
-                          
-                          // Servicios extras
-                          CheckboxListTile(
-                            value: _model.checkboxValue1 ?? false,
-                            onChanged: (val) {
-                              setState(() => _model.checkboxValue1 = val);
-                              _calculateTotal();
-                            },
-                            title: Text('Lavado de auto (+S/. 10)', style: TextStyle(fontSize: 14)),
-                            activeColor: Color(0xFF00BFA5),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          CheckboxListTile(
-                            value: _model.checkboxValue2 ?? false,
-                            onChanged: (val) {
-                              setState(() => _model.checkboxValue2 = val);
-                              _calculateTotal();
-                            },
-                            title: Text('Seguro adicional (+S/. 5)', style: TextStyle(fontSize: 14)),
-                            activeColor: Color(0xFF00BFA5),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          CheckboxListTile(
-                            value: _model.checkboxValue3 ?? false,
-                            onChanged: (val) {
-                              setState(() => _model.checkboxValue3 = val);
-                              _calculateTotal();
-                            },
-                            title: Text('Carga eléctrica (+S/. 8)', style: TextStyle(fontSize: 14)),
-                            activeColor: Color(0xFF00BFA5),
-                            controlAffinity: ListTileControlAffinity.leading,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                
-                // Card Resumen
-                Padding(
-                  padding: EdgeInsetsDirectional.fromSTEB(16.0, 16.0, 16.0, 16.0),
-                  child: Card(
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
-                    color: Colors.white,
-                    elevation: 2.0,
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Resumen',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF2E2E2E),
-                            ),
-                          ),
-                          SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Tiempo total', style: TextStyle(fontSize: 14)),
-                              Text('$hours horas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                          SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Estacionamiento', style: TextStyle(fontSize: 14)),
-                              Text(
-                                'S/. ${(basePrice * hours).toStringAsFixed(2)}',
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Servicios extras', style: TextStyle(fontSize: 14)),
-                              Text(
-                                'S/. ${extraServices.toStringAsFixed(2)}',
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                          Padding(
-                            padding: EdgeInsetsDirectional.fromSTEB(0.0, 8.0, 0.0, 8.0),
-                            child: Divider(height: 1.0, thickness: 1.0, color: Color(0xFF9E9E9E)),
-                          ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Total',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2E2E2E),
-                                ),
-                              ),
-                              Text(
-                                'S/. ${totalPrice.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF00BFA5),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                
-                SizedBox(height: 80),
-              ],
+                  
+                  SizedBox(height: 100),
+                ],
+              ),
             ),
           ),
-        ),
+          
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))],
+            ),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('TOTAL', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      Text('S/. ${totalPrice.toStringAsFixed(2)}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00BFA5))),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: confirmReservation,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(0xFF00BFA5),
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                      ),
+                      child: Text('CONFIRMAR RESERVA', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
